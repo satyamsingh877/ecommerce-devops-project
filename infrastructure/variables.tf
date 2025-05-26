@@ -1,11 +1,11 @@
 variable "aws_region" {
   description = "AWS region to launch servers"
-  default     = "us-east-1"
+  default     = "eu-north-1"
 }
 
 variable "ami_id" {
   description = "AMI ID for Ubuntu 22.04 LTS"
-  default     = "ami-0c55b159cbfafe1f0"
+  default     = "ami-0c1ac8a41498c1a9c"
 }
 
 variable "instance_type" {
