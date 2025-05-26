@@ -1,0 +1,47 @@
+name: Install Monitoring Tools
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'tools-installation/install_prometheus.sh'
+      - 'tools-installation/install_grafana.sh'
+
+jobs:
+  monitoring:
+    name: 'Install Monitoring'
+    runs-on: ubuntu-latest
+    needs: install-tools
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Get EC2 IP
+        id: ec2-ip
+        run: |
+          IP=$(terraform -chdir=infrastructure output -raw instance_public_ip)
+          echo "ip=$IP" >> $GITHUB_OUTPUT
+
+      - name: Install SSH Key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          known_hosts: ${{ secrets.KNOWN_HOSTS }}
+
+      - name: Install Prometheus
+        run: |
+          scp -o StrictHostKeyChecking=no tools-installation/install_prometheus.sh ubuntu@${{ steps.ec2-ip.outputs.ip }}:/home/ubuntu/
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} "chmod +x /home/ubuntu/install_prometheus.sh && /home/ubuntu/install_prometheus.sh"
+
+      - name: Install Grafana
+        run: |
+          scp -o StrictHostKeyChecking=no tools-installation/install_grafana.sh ubuntu@${{ steps.ec2-ip.outputs.ip }}:/home/ubuntu/
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} "chmod +x /home/ubuntu/install_grafana.sh && /home/ubuntu/install_grafana.sh"
+
+      - name: Get Grafana Admin Password
+        run: |
+          PASSWORD=$(ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} "kubectl get secret --namespace grafana grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo")
+          echo "GRAFANA_PASSWORD=$PASSWORD" >> $GITHUB_ENV
+          echo "Grafana admin password: $PASSWORD"
