@@ -5,7 +5,7 @@ variable "aws_region" {
 
 variable "ami_id" {
   description = "AMI ID for Ubuntu 22.04 LTS"
-  default     = "ami-0c1ac8a41498c1a9c"
+  default     = "ami-0c1ac8a414984596221"
 }
 
 variable "instance_type" {
