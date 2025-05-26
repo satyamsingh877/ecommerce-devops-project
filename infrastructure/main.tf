@@ -14,7 +14,7 @@ provider "aws" {
 resource "aws_instance" "ecommerce_server" {
   ami           = var.ami_id
   instance_type = var.instance_type
-  key_name      = var.key_pair_name
+  //key_name      = var.key_pair_name
   vpc_security_group_ids = [aws_security_group.ecommerce_sg.id]
 
   tags = {
