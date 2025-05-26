@@ -13,7 +13,7 @@ variable "instance_type" {
   default     = "t3.medium"
 }
 
-variable "key_pair_name" {
-  description = "Name of the AWS key pair"
-  default     = "your-key-pair-name"
-}
+//variable "key_pair_name" {
+//  description = "Name of the AWS key pair"
+//  default     = "your-key-pair-name"
+//}
