@@ -10,7 +10,7 @@ variable "ami_id" {
 
 variable "instance_type" {
   description = "Instance type"
-  default     = "t2.medium"
+  default     = "t3.medium"
 }
 
 variable "key_pair_name" {
