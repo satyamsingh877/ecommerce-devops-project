@@ -11,7 +11,7 @@ jobs:
   install-tools:
     name: 'Install Tools'
     runs-on: ubuntu-latest
-    needs: terraform
+    needs: Docker
 
     steps:
       - name: Checkout code
