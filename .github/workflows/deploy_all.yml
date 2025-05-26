@@ -1,0 +1,300 @@
+name: Deploy E-Commerce with Full DevOps Toolchain
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - 'README.md'
+      - '.gitignore'
+
+env:
+  AWS_REGION: 'us-east-1'
+  KUBE_VERSION: 'v1.27.3'
+  HELM_VERSION: 'v3.12.0'
+
+jobs:
+  # 1. Provision Infrastructure with Terraform
+  provision-infrastructure:
+    name: 'Provision EC2 Instance'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: '1.3.7'
+
+      - name: Terraform Init
+        run: terraform -chdir=infrastructure init
+
+      - name: Terraform Validate
+        run: terraform -chdir=infrastructure validate
+
+      - name: Terraform Plan
+        run: terraform -chdir=infrastructure plan
+
+      - name: Terraform Apply
+        run: terraform -chdir=infrastructure apply -auto-approve
+
+      - name: Get EC2 IP Address
+        id: ec2-ip
+        run: |
+          IP=$(terraform -chdir=infrastructure output -raw instance_public_ip)
+          echo "ip=$IP" >> $GITHUB_OUTPUT
+
+      - name: Save EC2 IP
+        uses: actions/upload-artifact@v3
+        with:
+          name: ec2-ip
+          path: ${{ steps.ec2-ip.outputs.ip }}
+
+  # 2. Install Base System Tools
+  install-base-tools:
+    name: 'Install Base Tools'
+    needs: provision-infrastructure
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Download EC2 IP
+        uses: actions/download-artifact@v3
+        with:
+          name: ec2-ip
+
+      - name: Get EC2 IP
+        id: ec2-ip
+        run: |
+          IP=$(cat ec2-ip/ip)
+          echo "ip=$IP" >> $GITHUB_OUTPUT
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Wait for SSH to be available
+        run: |
+          IP=${{ steps.ec2-ip.outputs.ip }}
+          until nc -zv $IP 22; do
+            echo "Waiting for SSH to be available..."
+            sleep 5
+          done
+
+      - name: Install Common Dependencies
+        run: |
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} << 'EOF'
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            curl \
+            wget \
+            gnupg \
+            software-properties-common \
+            apt-transport-https \
+            ca-certificates \
+            lsb-release \
+            unzip \
+            default-jre
+          EOF
+
+      - name: Install Terraform
+        run: |
+          scp -o StrictHostKeyChecking=no tools-installation/install_terraform.sh ubuntu@${{ steps.ec2-ip.outputs.ip }}:/tmp/
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} "chmod +x /tmp/install_terraform.sh && /tmp/install_terraform.sh"
+
+      - name: Install Docker
+        run: |
+          scp -o StrictHostKeyChecking=no tools-installation/install_docker.sh ubuntu@${{ steps.ec2-ip.outputs.ip }}:/tmp/
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} "chmod +x /tmp/install_docker.sh && /tmp/install_docker.sh"
+
+  # 3. Install Security Tools
+  install-security-tools:
+    name: 'Install Security Tools'
+    needs: install-base-tools
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Download EC2 IP
+        uses: actions/download-artifact@v3
+        with:
+          name: ec2-ip
+
+      - name: Get EC2 IP
+        id: ec2-ip
+        run: |
+          IP=$(cat ec2-ip/ip)
+          echo "ip=$IP" >> $GITHUB_OUTPUT
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Install SonarQube
+        run: |
+          scp -o StrictHostKeyChecking=no tools-installation/install_sonarqube.sh ubuntu@${{ steps.ec2-ip.outputs.ip }}:/tmp/
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} "chmod +x /tmp/install_sonarqube.sh && /tmp/install_sonarqube.sh"
+
+      - name: Install OWASP ZAP
+        run: |
+          scp -o StrictHostKeyChecking=no tools-installation/install_owasp.sh ubuntu@${{ steps.ec2-ip.outputs.ip }}:/tmp/
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} "chmod +x /tmp/install_owasp.sh && /tmp/install_owasp.sh"
+
+      - name: Install Trivy
+        run: |
+          scp -o StrictHostKeyChecking=no tools-installation/install_trivy.sh ubuntu@${{ steps.ec2-ip.outputs.ip }}:/tmp/
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} "chmod +x /tmp/install_trivy.sh && /tmp/install_trivy.sh"
+
+  # 4. Install Kubernetes Tools
+  install-kubernetes-tools:
+    name: 'Install Kubernetes Tools'
+    needs: install-base-tools
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Download EC2 IP
+        uses: actions/download-artifact@v3
+        with:
+          name: ec2-ip
+
+      - name: Get EC2 IP
+        id: ec2-ip
+        run: |
+          IP=$(cat ec2-ip/ip)
+          echo "ip=$IP" >> $GITHUB_OUTPUT
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Install Helm
+        run: |
+          scp -o StrictHostKeyChecking=no tools-installation/install_helm.sh ubuntu@${{ steps.ec2-ip.outputs.ip }}:/tmp/
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} "chmod +x /tmp/install_helm.sh && /tmp/install_helm.sh"
+
+      - name: Install Kubernetes
+        run: |
+          scp -o StrictHostKeyChecking=no tools-installation/install_kubernetes.sh ubuntu@${{ steps.ec2-ip.outputs.ip }}:/tmp/
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} "chmod +x /tmp/install_kubernetes.sh && /tmp/install_kubernetes.sh"
+
+      - name: Install ArgoCD
+        run: |
+          scp -o StrictHostKeyChecking=no tools-installation/install_argocd.sh ubuntu@${{ steps.ec2-ip.outputs.ip }}:/tmp/
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} "chmod +x /tmp/install_argocd.sh && /tmp/install_argocd.sh"
+
+  # 5. Install Monitoring Tools
+  install-monitoring-tools:
+    name: 'Install Monitoring Tools'
+    needs: install-kubernetes-tools
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Download EC2 IP
+        uses: actions/download-artifact@v3
+        with:
+          name: ec2-ip
+
+      - name: Get EC2 IP
+        id: ec2-ip
+        run: |
+          IP=$(cat ec2-ip/ip)
+          echo "ip=$IP" >> $GITHUB_OUTPUT
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Install Prometheus
+        run: |
+          scp -o StrictHostKeyChecking=no tools-installation/install_prometheus.sh ubuntu@${{ steps.ec2-ip.outputs.ip }}:/tmp/
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} "chmod +x /tmp/install_prometheus.sh && /tmp/install_prometheus.sh"
+
+      - name: Install Grafana
+        run: |
+          scp -o StrictHostKeyChecking=no tools-installation/install_grafana.sh ubuntu@${{ steps.ec2-ip.outputs.ip }}:/tmp/
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} "chmod +x /tmp/install_grafana.sh && /tmp/install_grafana.sh"
+
+  # 6. Deploy Application and Run Security Scans
+  deploy-and-scan:
+    name: 'Deploy App & Run Security Scans'
+    needs: [install-base-tools, install-security-tools]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Download EC2 IP
+        uses: actions/download-artifact@v3
+        with:
+          name: ec2-ip
+
+      - name: Get EC2 IP
+        id: ec2-ip
+        run: |
+          IP=$(cat ec2-ip/ip)
+          echo "ip=$IP" >> $GITHUB_OUTPUT
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Deploy E-Commerce Application
+        run: |
+          scp -r -o StrictHostKeyChecking=no src ubuntu@${{ steps.ec2-ip.outputs.ip }}:/home/ubuntu/
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} << 'EOF'
+          cd /home/ubuntu/src
+          sudo docker build -t ecommerce-app .
+          sudo docker run -d -p 5000:5000 --name ecommerce ecommerce-app
+          EOF
+
+      - name: Run SonarQube Scan
+        run: |
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} << 'EOF'
+          docker exec sonarqube sonar-scanner \
+            -Dsonar.projectKey=ecommerce \
+            -Dsonar.sources=/home/ubuntu/src \
+            -Dsonar.host.url=http://localhost:9000 \
+            -Dsonar.login=admin \
+            -Dsonar.password=admin
+          EOF
+
+      - name: Run OWASP ZAP Scan
+        run: |
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} "/opt/zaproxy/zap.sh -cmd -quickurl http://localhost:5000 -quickprogress -quickout /home/ubuntu/zap-report.html"
+
+      - name: Run Trivy Scan
+        run: |
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} "trivy fs --security-checks vuln,config /home/ubuntu/src > /home/ubuntu/trivy-report.txt"
+
+      - name: Upload Scan Reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-reports
+          path: |
+            ${{ steps.ec2-ip.outputs.ip }}:/home/ubuntu/zap-report.html
+            ${{ steps.ec2-ip.outputs.ip }}:/home/ubuntu/trivy-report.txt
