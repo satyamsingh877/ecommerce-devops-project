@@ -12,6 +12,7 @@ env:
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
 jobs:
+  # Independent job that gets the EC2 IP
   get-ec2-ip:
     name: 'Get EC2 IP'
     runs-on: ubuntu-latest
@@ -25,17 +26,20 @@ jobs:
         with:
           terraform_version: 1.3.7
 
-      - name: Get EC2 IP from state
+      - name: Terraform Init
+        run: terraform -chdir=infrastructure init
+
+      - name: Get EC2 IP
         id: ec2-ip
         run: |
-          terraform -chdir=infrastructure init
           IP=$(terraform -chdir=infrastructure output -raw instance_public_ip)
           echo "ip=$IP" >> $GITHUB_OUTPUT
 
+  # Dependent job that installs tools
   install-tools:
     name: 'Install Tools'
     runs-on: ubuntu-latest
-    needs: get-ec2-ip
+    needs: 13.51.235.235  # This job depends on get-ec2-ip
 
     steps:
       - name: Checkout code
