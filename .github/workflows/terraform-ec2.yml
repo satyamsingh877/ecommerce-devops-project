@@ -10,7 +10,7 @@ on:
 env:
   AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-  AWS_REGION: 'us-east-1'
+  AWS_REGION: 'eu-north-1'
 
 jobs:
   terraform:
@@ -37,3 +37,16 @@ jobs:
 
       - name: Terraform Apply
         run: terraform -chdir=infrastructure apply -auto-approve
+
+      - name: Get EC2 IP
+        id: ec2-ip
+        run: |
+          IP=$(terraform -chdir=infrastructure output -raw instance_public_ip)
+          echo "ip=$IP" >> $GITHUB_OUTPUT
+
+      - name: Save EC2 IP
+        uses: actions/upload-artifact@v3
+        with:
+          name: ec2-ip
+          path: |
+            ${{ steps.ec2-ip.outputs.ip }}
