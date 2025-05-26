@@ -1,0 +1,70 @@
+name: Install DevOps Tools on EC2
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - 'tools-installation/**'
+
+jobs:
+  install-tools:
+    name: 'Install Tools'
+    runs-on: ubuntu-latest
+    needs: terraform
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Get EC2 IP
+        id: ec2-ip
+        run: |
+          IP=$(terraform -chdir=infrastructure output -raw instance_public_ip)
+          echo "ip=$IP" >> $GITHUB_OUTPUT
+
+      - name: Install SSH Key
+        uses: shimataro/ssh-key-action@v2
+        with:
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          known_hosts: ${{ secrets.KNOWN_HOSTS }}
+
+      - name: Install Terraform
+        run: |
+          scp -o StrictHostKeyChecking=no tools-installation/install_terraform.sh ubuntu@${{ steps.ec2-ip.outputs.ip }}:/home/ubuntu/
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} "chmod +x /home/ubuntu/install_terraform.sh && /home/ubuntu/install_terraform.sh"
+
+      - name: Install Docker
+        run: |
+          scp -o StrictHostKeyChecking=no tools-installation/install_docker.sh ubuntu@${{ steps.ec2-ip.outputs.ip }}:/home/ubuntu/
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} "chmod +x /home/ubuntu/install_docker.sh && /home/ubuntu/install_docker.sh"
+
+      - name: Install SonarQube
+        run: |
+          scp -o StrictHostKeyChecking=no tools-installation/install_sonarqube.sh ubuntu@${{ steps.ec2-ip.outputs.ip }}:/home/ubuntu/
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} "chmod +x /home/ubuntu/install_sonarqube.sh && /home/ubuntu/install_sonarqube.sh"
+
+      - name: Install OWASP ZAP
+        run: |
+          scp -o StrictHostKeyChecking=no tools-installation/install_owasp.sh ubuntu@${{ steps.ec2-ip.outputs.ip }}:/home/ubuntu/
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} "chmod +x /home/ubuntu/install_owasp.sh && /home/ubuntu/install_owasp.sh"
+
+      - name: Install Trivy
+        run: |
+          scp -o StrictHostKeyChecking=no tools-installation/install_trivy.sh ubuntu@${{ steps.ec2-ip.outputs.ip }}:/home/ubuntu/
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} "chmod +x /home/ubuntu/install_trivy.sh && /home/ubuntu/install_trivy.sh"
+
+      - name: Install Helm
+        run: |
+          scp -o StrictHostKeyChecking=no tools-installation/install_helm.sh ubuntu@${{ steps.ec2-ip.outputs.ip }}:/home/ubuntu/
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} "chmod +x /home/ubuntu/install_helm.sh && /home/ubuntu/install_helm.sh"
+
+      - name: Install Kubernetes
+        run: |
+          scp -o StrictHostKeyChecking=no tools-installation/install_kubernetes.sh ubuntu@${{ steps.ec2-ip.outputs.ip }}:/home/ubuntu/
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} "chmod +x /home/ubuntu/install_kubernetes.sh && /home/ubuntu/install_kubernetes.sh"
+
+      - name: Install ArgoCD
+        run: |
+          scp -o StrictHostKeyChecking=no tools-installation/install_argocd.sh ubuntu@${{ steps.ec2-ip.outputs.ip }}:/home/ubuntu/
+          ssh -o StrictHostKeyChecking=no ubuntu@${{ steps.ec2-ip.outputs.ip }} "chmod +x /home/ubuntu/install_argocd.sh && /home/ubuntu/install_argocd.sh"
